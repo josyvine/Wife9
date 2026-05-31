@@ -119,6 +119,17 @@
             app:layout_constraintBottom_toTopOf="@+id/btn_confirm_selection"
             app:layout_constraintEnd_toEndOf="parent">
 
+            <!-- New: Floating GPS Recenter Button -->
+            <ImageButton
+                android:id="@+id/btn_my_location"
+                android:layout_width="45dp"
+                android:layout_height="45dp"
+                android:background="@drawable/rounded_bg_white"
+                android:src="@drawable/my_location_24px"
+                android:elevation="4dp"
+                android:layout_marginBottom="12dp"
+                android:contentDescription="My Location" />
+
             <ImageButton
                 android:id="@+id/btn_zoom_in"
                 android:layout_width="45dp"
