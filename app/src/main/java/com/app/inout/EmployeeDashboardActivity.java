@@ -5,6 +5,7 @@ import android.location.Location;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -12,6 +13,7 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.fragment.app.Fragment;
 import androidx.navigation.NavController;
 import androidx.navigation.fragment.NavHostFragment;
 import androidx.navigation.ui.AppBarConfiguration;
@@ -236,15 +238,41 @@ public class EmployeeDashboardActivity extends AppCompatActivity {
         // Mark that resume was requested and add initial remark for CSV clarity
         db.collection("attendance").document(recordId)
                 .update("resumeRequested", true, "remarks", initialRemarks)
+                .addOnSuccessListener(aVoid -> {
+                    Toast.makeText(this, "Resume enabled. You can now Check-In.", Toast.LENGTH_SHORT).show();
+                    triggerFragmentRefresh(); // Trigger instant fragment state reload on successful update [2]
+                })
                 .addOnFailureListener(e -> {
                     // If record doesn't exist yet, create a shell record with the resume flag and remarks
                     AttendanceRecord newRecord = new AttendanceRecord(currentUser.getEmployeeId(), currentUser.getName(), dateId, TimeUtils.getCurrentTimestamp());
                     newRecord.setRecordId(recordId);
                     newRecord.setResumeRequested(true);
                     newRecord.setRemarks(initialRemarks);
-                    db.collection("attendance").document(recordId).set(newRecord);
-                })
-                .addOnSuccessListener(aVoid -> Toast.makeText(this, "Resume enabled. You can now Check-In.", Toast.LENGTH_SHORT).show());
+                    db.collection("attendance").document(recordId).set(newRecord)
+                            .addOnSuccessListener(aVoid -> {
+                                Toast.makeText(this, "Resume enabled. You can now Check-In.", Toast.LENGTH_SHORT).show();
+                                triggerFragmentRefresh(); // Trigger instant fragment state reload on successful set [2]
+                            });
+                });
+    }
+
+    /**
+     * Safely finds the active EmployeeCheckInFragment and triggers a real-time UI refresh [2].
+     */
+    private void triggerFragmentRefresh() {
+        try {
+            NavHostFragment navHostFragment = (NavHostFragment) getSupportFragmentManager()
+                    .findFragmentById(R.id.nav_host_fragment_employee);
+            if (navHostFragment != null) {
+                Fragment currentFragment = navHostFragment.getChildFragmentManager()
+                        .getPrimaryNavigationFragment();
+                if (currentFragment instanceof EmployeeCheckInFragment) {
+                    ((EmployeeCheckInFragment) currentFragment).refreshCheckInStatus();
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to trigger fragment UI refresh", e);
+        }
     }
 
     private void handleEmergencyLeaveRequest() {
