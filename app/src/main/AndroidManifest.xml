@@ -57,6 +57,11 @@
             android:name=".CheckInAlarmReceiver"
             android:exported="false" />
 
+        <!-- NEW: Background Voice engine service for dynamic TTS speech alerts -->
+        <service
+            android:name=".CheckInVoiceService"
+            android:exported="false" />
+
         <!-- FILE PROVIDER: Required for QR Image Sharing -->
         <provider
             android:name="androidx.core.content.FileProvider"
