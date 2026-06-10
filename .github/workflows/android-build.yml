@@ -30,6 +30,10 @@ jobs:
             -alias "${{ secrets.KEY_ALIAS }}" \
             -storepass "${{ secrets.KEYSTORE_PASSWORD }}"
 
+      # Grant execute permission to the Gradle wrapper script to resolve permission denied error
+      - name: Make Gradlew Executable
+        run: chmod +x gradlew
+
       - name: Build Release APK
         run: ./gradlew assembleRelease
         env:
