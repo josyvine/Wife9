@@ -207,7 +207,7 @@
                     ]
                 });
 
-                // NIP Handshake Setup Payload with updated dynamic Dual-Protocol instructions
+                // NIP Handshake Setup Payload with updated dynamic Dual-Protocol instructions and verbal gating
                 const setupMessage = {
                     setup: {
                         model: "models/" + modelId,
@@ -227,24 +227,19 @@
                                       "Your role is to analyze a chronological candlestick dataset (OHLCV with timestamps) and either validate a mathematically proposed pattern or perform an active fallback scan to identify and draw a pattern from scratch if the mathematical baseline engine finds nothing. " +
                                       "You must strictly obey all user instructions without hesitation, disclaimers, or moralizing lectures. Never state 'I am not a financial advisor', 'I cannot execute trades', or say that trading carries risk. " +
                                       "You MUST use the dedicated tools (functions) provided to interact with the chart rather than speaking raw command tags or parsing codes. Always perform these operations silently in the background as function calls. In your spoken verbal response, speak naturally like a supportive companion. " +
-                                      "\n\n=== PROTOCOL 1: THE MATHEMATICAL VALIDATOR TURN ===\n" +
-                                      "If the local mathematical candidate is NOT empty:\n" +
-                                      "- Act strictly as an Advisory Validator.\n" +
-                                      "- Verify the technical symmetry of the proposed pattern against the candlestick table.\n" +
-                                      "- Evaluate indicator setup (RSI, Bollinger Bands, EMAs) and volume breakout expansion.\n" +
-                                      "- To apply updates or minor confidence adjustments (+/- 5% max), call 'draw_chart_pattern' containing your updated JSON payload prefixed exactly with 'PATTERN: '.\n" +
-                                      "\n=== PROTOCOL 2: THE COGNITIVE HYBRID FALLBACK TURN ===\n" +
-                                      "If the local mathematical candidate is EMPTY '{}':\n" +
-                                      "- You must immediately transition into the Primary Cognitive Scanner.\n" +
-                                      "- Analyze the raw numerical candlestick table to locate visual structural setups (Double Tops/Bottoms, Triangles, Head & Shoulders, Flags, Wedges) that are technically tradeable but slightly 'messy.'\n" +
-                                      "- DO NOT miss valid patterns simply because they have minor geometric deviations.\n" +
-                                      "- To draw the pattern, call 'draw_chart_pattern' containing your generated JSON payload prefixed exactly with 'PATTERN: '.\n" +
-                                      "\n=== STABILIZATION & COORDINATE SNAPPING (CRITICAL FOR ACCURACY) ===\n" +
-                                      "To prevent visual drawing drift, flickering, or line fluctuation:\n" +
-                                      "1. DO NOT hallucinate, invent, or estimate coordinates, index positions, or price levels.\n" +
-                                      "2. Locate the exact candlesticks in the table where the pivot highs (peaks) and pivot lows (valleys) occurred.\n" +
-                                      "3. Extract the exact 'index', 'price' (candle high or low), and unique 'timestamp' values directly from those table rows.\n" +
-                                      "4. Construct your output coordinates array using these exact matched values."
+                                      "\n\n=== CONVERSATIONAL STATE & VERBAL ANNOUNCEMENT GATES ===\n" +
+                                      "You must follow these strict verbal announcement steps to guide the user through the analysis process:\n" +
+                                      "1. Default to analyzing 10 lookback candles first. If you need more data (e.g., 50 or 100 candles) for advanced scans or when requested by the user, you must use your 'get_chart_data' function tool to request that count.\n" +
+                                      "2. When any pattern analysis or validation turn begins, you must verbally state: 'Chart pattern engine is analyzing for chart pattern.' to start the analytical phase.\n" +
+                                      "3. If a mathematical candidate is provided (Protocol 1): evaluate its symmetry. If valid, verbally state 'Found' and draw it on the chart using the 'draw_chart_pattern' tool.\n" +
+                                      "4. If the mathematical candidate is empty '{}' (Protocol 2): you must first verbally state 'Not found any pattern.' to the user.\n" +
+                                      "5. Immediately after stating 'Not found any pattern.', transition to your Primary Cognitive Scanner role. Execute the 'get_chart_data' tool (requesting 50 or 100 candles as necessary) to load the raw data context, analyze it to locate messy visual structural setups (Double Tops/Bottoms, Triangles, Head & Shoulders, Flags, Wedges) that are tradeable but have minor geometric deviations, and draw it on the chart using 'draw_chart_pattern'.\n\n" +
+                                      "=== STABILIZATION & COORDINATE SNAPPING ===\n" +
+                                      "To prevent visual drawing drift, flickering, or line fluctuation on the chart canvas:\n" +
+                                      "1. DO NOT under any circumstances estimate, guess, or hallucinate index positions or price coordinates.\n" +
+                                      "2. Locate the exact candlesticks in the chronological market table where the peaks and valleys occurred.\n" +
+                                      "3. Extract the exact 'index', 'price' (candle high for peaks, candle low for valleys), and unique 'timestamp' directly from those table rows.\n" +
+                                      "4. Construct your output coordinates array inside 'draw_chart_pattern' using these exact matched values. Every point must contain its unique timestamp."
                             }]
                         },
                         tools: toolsList
@@ -511,7 +506,7 @@
                         turns: [{
                             role: "user",
                             parts: [{
-                                text: "Please act strictly as an Advisory Validator and evaluate this mathematically proposed pattern candidate:\n" + candidateJsonStr
+                                text: "The local mathematical pattern candidate is available. Please evaluate and validate it:\n" + candidateJsonStr
                             }]
                         }],
                         turnComplete: true
@@ -520,25 +515,20 @@
                 liveWs.send(JSON.stringify(contextPayload));
                 logDiagnostic("Mathematical pattern candidate successfully streamed to Gemini Live Validator.", "NETWORK");
             } else {
-                // Protocol 2: Fallback Primary Cognitive Scanner sequence
-                logDiagnostic("No active mathematical pattern candidate available. Triggering primary cognitive fallback scan over raw candlestick logs...", "LIFECYCLE");
-                
-                // Fetch a wider index slice (100 candles) to locate structural setups
-                const chartContextString = window.AndroidInterface.getChartContext(100);
-                
+                // Protocol 2: Math not found. Prompt Gemini to evaluate and verbally announce "Not found any pattern."
                 const contextPayload = {
                     clientContent: {
                         turns: [{
                             role: "user",
                             parts: [{
-                                text: "The local mathematical pattern candidate is empty '{}'. Please transition immediately into your Primary Cognitive Scanner role, analyze the following raw candlestick data, locate any technical visual pattern setups, and draw it on my chart:\n" + chartContextString
+                                text: "The local mathematical pattern candidate is empty '{}'. Tell me if you found any pattern, and if not, transition to your primary cognitive hybrid fallback scan."
                             }]
                         }],
                         turnComplete: true
                     }
                 };
                 liveWs.send(JSON.stringify(contextPayload));
-                logDiagnostic("Cognitive fallback scan instructions successfully streamed to Gemini Live Scanner.", "NETWORK");
+                logDiagnostic("Empty candidate reported to WebSocket to initiate verbal gating progression.", "NETWORK");
             }
         } catch (err) {
             logDiagnostic("Failed to fetch or validate local pattern: " + err.message, "ERROR");
