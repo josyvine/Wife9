@@ -130,21 +130,24 @@ public class MainActivity extends AppCompatActivity implements ConnectionManager
 
     @Override
     public void onConnectionStateChanged(boolean connected, String peerIp, boolean isHost) {
-        if (connected) {
-            binding.vStatusIndicator.setBackgroundResource(android.R.drawable.presence_online);
-            binding.tvMainConnectionState.setText("Connected");
-            binding.tvMainConnectionState.setTextColor(getResources().getColor(android.R.color.holo_green_dark, getTheme()));
-            binding.tvMainPeerDetails.setText("Peer IP: " + peerIp + " | Link Mode: " + (isHost ? "Mesh Host" : "Mesh Client"));
-            
-            // Start heartbeat keep alive tracking
-            HeartbeatManager.getInstance(this).startMonitoring();
-        } else {
-            binding.vStatusIndicator.setBackgroundResource(android.R.drawable.presence_offline);
-            binding.tvMainConnectionState.setText("Disconnected");
-            binding.tvMainConnectionState.setTextColor(getResources().getColor(android.R.color.holo_red_dark, getTheme()));
-            binding.tvMainPeerDetails.setText("No connected devices nearby.");
-            
-            HeartbeatManager.getInstance(this).stopMonitoring();
-        }
+        runOnUiThread(() -> {
+            if (binding == null) return;
+            if (connected) {
+                binding.vStatusIndicator.setBackgroundResource(android.R.drawable.presence_online);
+                binding.tvMainConnectionState.setText("Connected");
+                binding.tvMainConnectionState.setTextColor(getResources().getColor(android.R.color.holo_green_dark, getTheme()));
+                binding.tvMainPeerDetails.setText("Peer IP: " + peerIp + " | Link Mode: " + (isHost ? "Mesh Host" : "Mesh Client"));
+                
+                // Start heartbeat keep alive tracking
+                HeartbeatManager.getInstance(MainActivity.this).startMonitoring();
+            } else {
+                binding.vStatusIndicator.setBackgroundResource(android.R.drawable.presence_offline);
+                binding.tvMainConnectionState.setText("Disconnected");
+                binding.tvMainConnectionState.setTextColor(getResources().getColor(android.R.color.holo_red_dark, getTheme()));
+                binding.tvMainPeerDetails.setText("No connected devices nearby.");
+                
+                HeartbeatManager.getInstance(MainActivity.this).stopMonitoring();
+            }
+        });
     }
 }
