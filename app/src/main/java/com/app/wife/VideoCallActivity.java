@@ -26,6 +26,9 @@ public class VideoCallActivity extends AppCompatActivity implements
     private boolean isInbound;
     private long callStartTime;
 
+    // Track which stream is currently enlarged (false: peer full screen, true: local full screen)
+    private boolean isLocalVideoFull = false;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -73,6 +76,13 @@ public class VideoCallActivity extends AppCompatActivity implements
         binding.fabDeclineVideo.setOnClickListener(v -> {
             WifeLogger.log(TAG, "User declined/ended active video call session.");
             declineOrEndCall();
+        });
+
+        // Set click listener on the PIP Card to swap views (local vs remote)
+        binding.cardSelfMirror.setOnClickListener(v -> {
+            isLocalVideoFull = !isLocalVideoFull;
+            WifeLogger.log(TAG, "Self-mirror PIP container tapped. Swapped display state: Local full screen = " + isLocalVideoFull);
+            Toast.makeText(this, isLocalVideoFull ? "Local preview enlarged" : "Remote preview enlarged", Toast.LENGTH_SHORT).show();
         });
     }
 
@@ -203,10 +213,13 @@ public class VideoCallActivity extends AppCompatActivity implements
     public void onFrameReceived(Bitmap bitmap) {
         runOnUiThread(() -> {
             if (bitmap != null) {
-                binding.ivPeerVideo.setImageBitmap(bitmap);
-                // REMOVED: binding.ivLocalVideo.setImageBitmap(bitmap);
-                // Cloned remote-bitmap assignment is cleared. The PIP view ivLocalVideo is now 
-                // fed dynamically by the real-time local camera preview loop.
+                if (isLocalVideoFull) {
+                    // If local stream is full-screen, the peer stream is routed to the PIP view
+                    binding.ivLocalVideo.setImageBitmap(bitmap);
+                } else {
+                    // Standard routing: remote stream is background
+                    binding.ivPeerVideo.setImageBitmap(bitmap);
+                }
             }
         });
     }
@@ -215,8 +228,13 @@ public class VideoCallActivity extends AppCompatActivity implements
     public void onLocalFrameCaptured(Bitmap bitmap) {
         runOnUiThread(() -> {
             if (bitmap != null) {
-                // Render your own local camera feed inside your PIP window
-                binding.ivLocalVideo.setImageBitmap(bitmap);
+                if (isLocalVideoFull) {
+                    // If local stream is full-screen, local preview is routed to the full background
+                    binding.ivPeerVideo.setImageBitmap(bitmap);
+                } else {
+                    // Standard routing: local preview is routed to the PIP view
+                    binding.ivLocalVideo.setImageBitmap(bitmap);
+                }
             }
         });
     }
