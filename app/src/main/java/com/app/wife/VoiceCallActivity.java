@@ -1,40 +1,44 @@
 package com.wife.app;
 
 import android.content.Intent;
+import android.graphics.Bitmap;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.view.View;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 
-import com.wife.app.databinding.ActivityVoiceCallBinding;
+import com.wife.app.databinding.ActivityVideoCallBinding;
+import com.wife.app.VideoDecoderManager.VideoFrameListener;
 import com.google.gson.JsonObject;
 
-public class VoiceCallActivity extends AppCompatActivity implements CallSignalingManager.SignalingEventListener {
+public class VideoCallActivity extends AppCompatActivity implements 
+        CallSignalingManager.SignalingEventListener, 
+        VideoFrameListener,
+        VideoCaptureManager.LocalFrameListener {
 
-    private ActivityVoiceCallBinding binding;
-    private VoiceCallManager voiceCallManager;
+    private static final String TAG = "VideoCallActivity";
+
+    private ActivityVideoCallBinding binding;
+    private VideoCallManager videoCallManager;
     private String peerIp;
     private String peerName;
     private boolean isInbound;
-    private boolean isMuted = false;
-    private boolean isSpeaker = true;
+    private long callStartTime;
 
-    private int callDurationSeconds = 0;
-    private Handler timerHandler = new Handler(Looper.getMainLooper());
-    private Runnable timerRunnable;
+    // Track which stream is currently enlarged (false: peer full screen, true: local full screen)
+    private boolean isLocalVideoFull = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        binding = ActivityVoiceCallBinding.inflate(getLayoutInflater());
+        binding = ActivityVideoCallBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
 
-        voiceCallManager = VoiceCallManager.getInstance(this);
+        WifeLogger.log(TAG, "onCreate() invoked. Initializing VideoCallActivity components.");
 
-        // Fetch intent boundaries
+        videoCallManager = VideoCallManager.getInstance(this);
+
         peerIp = getIntent().getStringExtra(Constants.EXTRA_PEER_IP);
         peerName = getIntent().getStringExtra(Constants.EXTRA_PEER_NAME);
         isInbound = getIntent().getBooleanExtra("IS_INBOUND", false);
@@ -43,130 +47,162 @@ public class VoiceCallActivity extends AppCompatActivity implements CallSignalin
             peerIp = ConnectionManager.getInstance(this).getPeerIpAddress();
         }
         if (peerName == null || peerName.isEmpty()) {
-            peerName = "Mesh Peer";
+            peerName = "Video Peer";
         }
 
-        binding.tvVoicePeerName.setText(peerName);
+        WifeLogger.log(TAG, "Target Peer IP: " + peerIp + " | Peer Name: " + peerName + " | Inbound Call Direction: " + isInbound);
+
+        binding.tvVideoPeerName.setText(peerName);
+
+        // Bind our local camera listener to stream real-time local previews into our PIP view
+        VideoCaptureManager.setLocalFrameListener(this);
 
         setupClickListeners();
         configureCallingState();
     }
 
     private void setupClickListeners() {
-        binding.fabMute.setOnClickListener(v -> {
-            isMuted = !isMuted;
-            voiceCallManager.muteMicrophone(isMuted);
-            binding.fabMute.setImageResource(isMuted ? 
-                    android.R.drawable.ic_lock_silent_mode : android.R.drawable.ic_btn_speak_now);
-            Toast.makeText(this, isMuted ? "Microphone muted" : "Microphone active", Toast.LENGTH_SHORT).show();
+        binding.fabSwitchCamera.setOnClickListener(v -> {
+            WifeLogger.log(TAG, "User triggered Switch Camera button. Rotating active lens.");
+            videoCallManager.switchCamera(this);
+            Toast.makeText(this, "Flipped focus", Toast.LENGTH_SHORT).show();
         });
 
-        binding.fabSpeaker.setOnClickListener(v -> {
-            isSpeaker = !isSpeaker;
-            voiceCallManager.setSpeakerphoneEnabled(isSpeaker);
-            binding.fabSpeaker.setImageResource(isSpeaker ? 
-                    android.R.drawable.ic_lock_silent_mode_off : android.R.drawable.ic_lock_silent_mode);
-            Toast.makeText(this, isSpeaker ? "Speaker active" : "Earpiece active", Toast.LENGTH_SHORT).show();
-        });
-
-        binding.fabAcceptVoice.setOnClickListener(v -> {
+        binding.fabAcceptVideo.setOnClickListener(v -> {
+            WifeLogger.log(TAG, "User accepted inbound video invitation.");
             acceptCall();
         });
 
-        binding.fabDeclineVoice.setOnClickListener(v -> {
+        binding.fabDeclineVideo.setOnClickListener(v -> {
+            WifeLogger.log(TAG, "User declined/ended active video call session.");
             declineOrEndCall();
+        });
+
+        // Set click listener on the PIP Card to swap views (local vs remote)
+        binding.cardSelfMirror.setOnClickListener(v -> {
+            isLocalVideoFull = !isLocalVideoFull;
+            WifeLogger.log(TAG, "Self-mirror PIP container tapped. Swapped display state: Local full screen = " + isLocalVideoFull);
+            Toast.makeText(this, isLocalVideoFull ? "Local preview enlarged" : "Remote preview enlarged", Toast.LENGTH_SHORT).show();
         });
     }
 
     private void configureCallingState() {
+        WifeLogger.log(TAG, "Configuring Call Signaling Manager. Registering Activity listener.");
         CallSignalingManager.getInstance(this).registerListener(this);
 
         if (isInbound) {
-            binding.tvVoiceCallState.setText("Inbound Voice Call...");
-            binding.fabAcceptVoice.setVisibility(View.VISIBLE);
+            WifeLogger.log(TAG, "Call State configured as: INBOUND_REQUEST.");
+            binding.tvVideoCallState.setText("Inbound Video Request...");
+            binding.fabAcceptVideo.setVisibility(View.VISIBLE);
         } else {
-            binding.tvVoiceCallState.setText("Calling...");
-            binding.fabAcceptVoice.setVisibility(View.GONE);
+            WifeLogger.log(TAG, "Call State configured as: OUTBOUND_CALL. Dispatching signaling request to: " + peerIp);
+            binding.tvVideoCallState.setText("Negotiating Link...");
+            binding.fabAcceptVideo.setVisibility(View.GONE);
             // Send request over control signal
-            CallSignalingManager.getInstance(this).sendSignal(peerIp, Constants.SIGNAL_CALL_REQUEST);
+            CallSignalingManager.getInstance(this).sendSignal(peerIp, Constants.SIGNAL_VIDEO_REQUEST);
         }
     }
 
     private void acceptCall() {
-        binding.fabAcceptVoice.setVisibility(View.GONE);
-        binding.tvVoiceCallState.setText("Connecting...");
+        binding.fabAcceptVideo.setVisibility(View.GONE);
+        binding.tvVideoCallState.setText("Opening Video channel...");
 
         // Alert initiator
-        CallSignalingManager.getInstance(this).sendSignal(peerIp, Constants.SIGNAL_CALL_ACCEPT);
+        WifeLogger.log(TAG, "Accepting Call. Relaying accept signaling packet to: " + peerIp);
+        CallSignalingManager.getInstance(this).sendSignal(peerIp, Constants.SIGNAL_VIDEO_ACCEPT);
 
-        // Launch server listener
-        voiceCallManager.listenForIncomingCall();
-        startCallServiceAndTimer();
+        // Parallel audio: Listen for incoming audio stream
+        WifeLogger.log(TAG, "Concurrently starting incoming audio listener on Port: " + Constants.OFF_PORT_VOICE);
+        VoiceCallManager.getInstance(this).listenForIncomingCall();
+
+        // Bind incoming stream
+        WifeLogger.log(TAG, "Concurrently starting incoming video listener on Port: " + Constants.OFF_PORT_VIDEO);
+        videoCallManager.listenForIncomingCall(this, this);
+        startCallService();
     }
 
     private void declineOrEndCall() {
-        if (isInbound && binding.fabAcceptVoice.getVisibility() == View.VISIBLE) {
-            CallSignalingManager.getInstance(this).sendSignal(peerIp, Constants.SIGNAL_CALL_REJECT);
+        WifeLogger.log(TAG, "declineOrEndCall() invoked. Processing signal termination...");
+        if (isInbound && binding.fabAcceptVideo.getVisibility() == View.VISIBLE) {
+            WifeLogger.log(TAG, "Call declined before connection. Dispatching REJECT signal to: " + peerIp);
+            CallSignalingManager.getInstance(this).sendSignal(peerIp, Constants.SIGNAL_VIDEO_REJECT);
         } else {
-            CallSignalingManager.getInstance(this).sendSignal(peerIp, Constants.SIGNAL_CALL_END);
+            WifeLogger.log(TAG, "Call ended during active stream. Dispatching END signal to: " + peerIp);
+            CallSignalingManager.getInstance(this).sendSignal(peerIp, Constants.SIGNAL_VIDEO_END);
         }
         hangUp();
     }
 
-    private void startCallServiceAndTimer() {
-        // Start Foreground Service for continuous calling background state
-        Intent serviceIntent = new Intent(this, VoiceCallForegroundService.class);
+    private void startCallService() {
+        WifeLogger.log(TAG, "Starting VideoCallForegroundService foreground worker.");
+        Intent serviceIntent = new Intent(this, VideoCallForegroundService.class);
         startService(serviceIntent);
 
-        binding.tvVoiceCallState.setText("Volume Active");
-        binding.tvVoiceDuration.setVisibility(View.VISIBLE);
-
-        timerRunnable = new Runnable() {
-            @Override
-            public void run() {
-                callDurationSeconds++;
-                binding.tvVoiceDuration.setText(Utils.formatDuration(callDurationSeconds));
-                timerHandler.postDelayed(this, 1000);
-            }
-        };
-        timerHandler.postDelayed(timerRunnable, 1000);
+        binding.tvVideoCallState.setText("Mesh Streaming Live");
+        callStartTime = System.currentTimeMillis();
     }
 
     private void hangUp() {
-        stopCallServiceAndTimer();
-        voiceCallManager.endCall();
-        
-        // Save Call Record in Db
-        CallEntity entity = new CallEntity(peerName, "Voice", callDurationSeconds, System.currentTimeMillis());
-        RoomDatabaseManager.getInstance(this).callDao().insert(entity);
+        WifeLogger.log(TAG, "hangUp() invoked. Stopping services and releasing active calling managers.");
+        stopCallService();
 
+        // Parallel audio: Terminate the parallel voice pipeline
+        WifeLogger.log(TAG, "Concurrently halting concurrent voice call pipelines.");
+        VoiceCallManager.getInstance(this).endCall();
+
+        WifeLogger.log(TAG, "Halting video call pipelines.");
+        videoCallManager.endCall();
+
+        // Calculate call duration
+        long duration = 0;
+        if (callStartTime > 0) {
+            duration = (System.currentTimeMillis() - callStartTime) / 1000;
+        }
+        WifeLogger.log(TAG, "Calculated call duration: " + duration + " seconds. Inserting log record to Call Dao.");
+
+        // Save Call Record in DB
+        CallEntity entity = new CallEntity(peerName, "Video", duration, System.currentTimeMillis());
+        try {
+            RoomDatabaseManager.getInstance(this).callDao().insert(entity);
+            WifeLogger.log(TAG, "Call duration log record written successfully to SQLite DB.");
+        } catch (Exception e) {
+            WifeLogger.log(TAG, "Failed writing call log record to database: " + e.getMessage(), e);
+        }
+
+        WifeLogger.log(TAG, "Finalizing VideoCallActivity.");
         finish();
     }
 
-    private void stopCallServiceAndTimer() {
+    private void stopCallService() {
+        WifeLogger.log(TAG, "stopCallService() invoked. Unregistering SignalingEventListener and terminating foreground service.");
         CallSignalingManager.getInstance(this).unregisterListener(this);
-        if (timerRunnable != null) {
-            timerHandler.removeCallbacks(timerRunnable);
-        }
-        stopService(new Intent(this, VoiceCallForegroundService.class));
+        stopService(new Intent(this, VideoCallForegroundService.class));
     }
 
     @Override
     public void onSignalReceived(String action, String senderIp, JsonObject payload) {
+        WifeLogger.log(TAG, "onSignalReceived callback triggered. Action: " + action + " | Sender IP: " + senderIp);
         runOnUiThread(() -> {
             switch (action) {
-                case Constants.SIGNAL_CALL_ACCEPT:
-                    binding.tvVoiceCallState.setText("Connected");
-                    // Initiator launches active client stream to peer
-                    voiceCallManager.startCall(peerIp);
-                    startCallServiceAndTimer();
+                case Constants.SIGNAL_VIDEO_ACCEPT:
+                    WifeLogger.log(TAG, "Signal matched: ACCEPT. Starting outbound audio/video stream parameters.");
+                    binding.tvVideoCallState.setText("Streaming Active");
+                    
+                    // Parallel audio: Start outbound audio stream
+                    WifeLogger.log(TAG, "Concurrently starting outbound audio client connection to: " + peerIp);
+                    VoiceCallManager.getInstance(VideoCallActivity.this).startCall(peerIp);
+
+                    videoCallManager.startCall(this, peerIp, this);
+                    startCallService();
                     break;
-                case Constants.SIGNAL_CALL_REJECT:
-                    Toast.makeText(this, "Call rejected by peer.", Toast.LENGTH_SHORT).show();
+                case Constants.SIGNAL_VIDEO_REJECT:
+                    WifeLogger.log(TAG, "Signal matched: REJECT. Teardown active activity context.");
+                    Toast.makeText(this, "Video invitation rejected.", Toast.LENGTH_SHORT).show();
                     hangUp();
                     break;
-                case Constants.SIGNAL_CALL_END:
-                    Toast.makeText(this, "Call terminated.", Toast.LENGTH_SHORT).show();
+                case Constants.SIGNAL_VIDEO_END:
+                    WifeLogger.log(TAG, "Signal matched: END. Teardown active activity context.");
+                    Toast.makeText(this, "Video channel terminated.", Toast.LENGTH_SHORT).show();
                     hangUp();
                     break;
             }
@@ -174,7 +210,54 @@ public class VoiceCallActivity extends AppCompatActivity implements CallSignalin
     }
 
     @Override
+    public void onFrameReceived(Bitmap bitmap) {
+        runOnUiThread(() -> {
+            if (bitmap != null) {
+                if (isLocalVideoFull) {
+                    // If local stream is full-screen, the peer stream is routed to the PIP view
+                    binding.ivLocalVideo.setImageBitmap(bitmap);
+                } else {
+                    // Standard routing: remote stream is background
+                    binding.ivPeerVideo.setImageBitmap(bitmap);
+                }
+            }
+        });
+    }
+
+    @Override
+    public void onLocalFrameCaptured(Bitmap bitmap) {
+        runOnUiThread(() -> {
+            if (bitmap != null) {
+                if (isLocalVideoFull) {
+                    // If local stream is full-screen, local preview is routed to the full background
+                    binding.ivPeerVideo.setImageBitmap(bitmap);
+                } else {
+                    // Standard routing: local preview is routed to the PIP view
+                    binding.ivLocalVideo.setImageBitmap(bitmap);
+                }
+            }
+        });
+    }
+
+    @Override
+    public void onDecoderError(String error) {
+        WifeLogger.log(TAG, "Decoder error received from VideoDecoderManager: " + error);
+        runOnUiThread(() -> {
+            Toast.makeText(this, "Decorder synchronization error: " + error, Toast.LENGTH_SHORT).show();
+            hangUp();
+        });
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        WifeLogger.log(TAG, "onDestroy() invoked. Cleaning up static LocalFrameListener handles.");
+        VideoCaptureManager.setLocalFrameListener(null);
+    }
+
+    @Override
     public void onBackPressed() {
+        WifeLogger.log(TAG, "User triggered native system back button press.");
         declineOrEndCall();
         super.onBackPressed();
     }
