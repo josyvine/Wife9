@@ -43,4 +43,9 @@ public class ChatManager {
             listener.onMessageReceived(message);
         }
     }
+
+    // Fixed: Added check to see if any observers are active in the foreground
+    public synchronized boolean hasListeners() {
+        return !listeners.isEmpty();
+    }
 }
