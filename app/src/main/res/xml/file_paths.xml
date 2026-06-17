@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- App-specific temporary internal cache storage (used for voice notes) -->
+    <cache-path name="temp_cache" path="." />
+    
+    <!-- App-specific external storage directories (used for temporary photo and video camera captures) -->
+    <external-files-path name="external_media" path="." />
+    
+    <!-- Fallback general public external SDCard folders -->
+    <external-path name="external_storage" path="." />
+    
+    <!-- App-specific internal private storage files directory -->
+    <files-path name="internal_files" path="." />
+</paths>
