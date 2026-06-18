@@ -53,7 +53,19 @@ public class ChatActivity extends AppCompatActivity implements ChatManager.Messa
             new ActivityResultContracts.GetContent(),
             uri -> {
                 if (uri != null) {
-                    sendAttachment(uri, "[FILE]");
+                    // Dynamically resolve MIME type to prevent classification conflicts (e.g. image sent as doc)
+                    String mimeType = getContentResolver().getType(uri);
+                    String typePrefix = "[FILE]";
+                    if (mimeType != null) {
+                        if (mimeType.startsWith("image/")) {
+                            typePrefix = "[IMAGE]";
+                        } else if (mimeType.startsWith("video/")) {
+                            typePrefix = "[VIDEO]";
+                        } else if (mimeType.startsWith("audio/")) {
+                            typePrefix = "[AUDIO]";
+                        }
+                    }
+                    sendAttachment(uri, typePrefix);
                 }
             }
     );
@@ -77,7 +89,6 @@ public class ChatActivity extends AppCompatActivity implements ChatManager.Messa
     );
 
     // Audio Voice Note Recording Variables
-    private MediaRecorder mediaRecorder;
     private File voiceNoteFile;
     private boolean isRecordingVoice = false;
 
@@ -226,14 +237,10 @@ public class ChatActivity extends AppCompatActivity implements ChatManager.Messa
 
     private void startVoiceRecording() {
         try {
-            voiceNoteFile = File.createTempFile("voice_note_", ".mp3", getCacheDir());
-            mediaRecorder = new MediaRecorder();
-            mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
-            mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
-            mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
-            mediaRecorder.setOutputFile(voiceNoteFile.getAbsolutePath());
-            mediaRecorder.prepare();
-            mediaRecorder.start();
+            voiceNoteFile = File.createTempFile("voice_note_", ".wav", getCacheDir());
+            
+            // Fixed: Standardize on standard high-fidelity WAV capture over capture engine
+            AudioCaptureManager.getInstance(this).startFileRecording(voiceNoteFile);
 
             isRecordingVoice = true;
             binding.ivSendVoiceIcon.setImageResource(android.R.drawable.ic_media_pause);
@@ -248,15 +255,8 @@ public class ChatActivity extends AppCompatActivity implements ChatManager.Messa
     }
 
     private void stopVoiceRecording() {
-        if (mediaRecorder != null) {
-            try {
-                mediaRecorder.stop();
-                mediaRecorder.release();
-            } catch (Exception e) {
-                WifeLogger.log(TAG, "Error stopping MediaRecorder: " + e.getMessage());
-            }
-            mediaRecorder = null;
-        }
+        // Fixed: Stop capture on standard singleton instance cleanly
+        AudioCaptureManager.getInstance(this).stopCapture();
         isRecordingVoice = false;
         binding.ivSendVoiceIcon.setImageResource(R.drawable.mic_24px);
         binding.etChatMessage.setHint("Message");
