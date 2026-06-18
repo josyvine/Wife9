@@ -53,6 +53,7 @@ public class FileTransferActivity extends AppCompatActivity implements
                     long transferred = intent.getLongExtra(Constants.EXTRA_BYTES_TRANSFERRED, 0);
                     long total = intent.getLongExtra(Constants.EXTRA_TOTAL_BYTES, 0);
                     int percent = (total > 0) ? (int) ((transferred * 100) / total) : 0;
+                    double speed = intent.getDoubleExtra(Constants.EXTRA_TRANSFER_SPEED, 0.0);
 
                     binding.layoutTransferProgress.setVisibility(View.VISIBLE);
                     
@@ -64,6 +65,12 @@ public class FileTransferActivity extends AppCompatActivity implements
                     
                     binding.pbTransferPercentage.setProgress(percent);
                     binding.tvTransferPercentText.setText(percent + "%");
+
+                    // Format raw byte counts and speed to human-readable strings
+                    String transferredStr = Utils.formatFileSize(transferred);
+                    String totalStr = Utils.formatFileSize(total);
+                    String speedStr = String.format(java.util.Locale.US, "%.1f MB/s", speed);
+                    binding.tvTransferSpeedAndSize.setText(transferredStr + " / " + totalStr + " (" + speedStr + ")");
                     break;
 
                 case Constants.ACTION_TRANSFER_COMPLETE:
@@ -146,6 +153,7 @@ public class FileTransferActivity extends AppCompatActivity implements
         binding.tvActiveFileName.setText("Uploading: " + filename);
         binding.pbTransferPercentage.setProgress(0);
         binding.tvTransferPercentText.setText("0%");
+        binding.tvTransferSpeedAndSize.setText(""); // Clear previous stats on new transaction
 
         FileSender.getInstance(this).sendFile(uri, filename, size, this);
     }
