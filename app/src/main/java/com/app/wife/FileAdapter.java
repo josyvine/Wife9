@@ -3,6 +3,7 @@ package com.wife.app;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -13,9 +14,16 @@ import java.util.List;
 public class FileAdapter extends RecyclerView.Adapter<FileAdapter.ViewHolder> {
 
     private final List<FileEntity> files;
+    private final OnFileDeleteListener deleteListener;
 
-    public FileAdapter(List<FileEntity> files) {
+    // Interface callback to relay delete button clicks to the hosting activity
+    public interface OnFileDeleteListener {
+        void onFileDelete(FileEntity file, int position);
+    }
+
+    public FileAdapter(List<FileEntity> files, OnFileDeleteListener deleteListener) {
         this.files = files;
+        this.deleteListener = deleteListener;
     }
 
     @NonNull
@@ -31,6 +39,15 @@ public class FileAdapter extends RecyclerView.Adapter<FileAdapter.ViewHolder> {
         holder.tvName.setText(file.getFilename());
         holder.tvSize.setText(Utils.formatFileSize(file.getSize()));
         holder.tvTime.setText(Utils.formatDate(file.getTimestamp()));
+
+        holder.btnDelete.setOnClickListener(v -> {
+            if (deleteListener != null) {
+                int adapterPos = holder.getAdapterPosition();
+                if (adapterPos != RecyclerView.NO_POSITION) {
+                    deleteListener.onFileDelete(files.get(adapterPos), adapterPos);
+                }
+            }
+        });
     }
 
     @Override
@@ -42,12 +59,14 @@ public class FileAdapter extends RecyclerView.Adapter<FileAdapter.ViewHolder> {
         TextView tvName;
         TextView tvSize;
         TextView tvTime;
+        ImageView btnDelete;
 
         public ViewHolder(@NonNull View itemView) {
             super(itemView);
             tvName = itemView.findViewById(R.id.tvFileName);
             tvSize = itemView.findViewById(R.id.tvFileSize);
             tvTime = itemView.findViewById(R.id.tvFileTime);
+            btnDelete = itemView.findViewById(R.id.btnDeleteFile);
         }
     }
 }
