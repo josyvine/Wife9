@@ -240,6 +240,11 @@ public class FileReceiver implements Runnable {
                     long totalBytesRead = resumePosition;
                     long lastNotificationUpdateTime = System.currentTimeMillis();
 
+                    // Rolling calculation variables for live transfer speed
+                    long speedPeriodBytesRead = 0;
+                    long speedPeriodStartTime = System.currentTimeMillis();
+                    double currentSpeed = 0.0; // in MB/s
+
                     while (totalBytesRead < compressedSize && !FileTransferForegroundService.isCancelled) {
                         // Symmetrical Thread-Safe Pause/Resume wait monitor locks
                         synchronized (FileTransferForegroundService.pauseLock) {
@@ -266,12 +271,21 @@ public class FileReceiver implements Runnable {
 
                         fos.write(buffer, 0, read);
                         totalBytesRead += read;
+                        speedPeriodBytesRead += read;
+
+                        long currentTime = System.currentTimeMillis();
+                        long timeDiff = currentTime - speedPeriodStartTime;
+                        if (timeDiff >= 1000) {
+                            // Speed (MB/s) = (Bytes / 1MB) / (timeDiff / 1s)
+                            currentSpeed = ((double) speedPeriodBytesRead / (1024.0 * 1024.0)) / ((double) timeDiff / 1000.0);
+                            speedPeriodBytesRead = 0;
+                            speedPeriodStartTime = currentTime;
+                        }
 
                         // Throttle notification updates
-                        long currentTime = System.currentTimeMillis();
                         if (currentTime - lastNotificationUpdateTime >= 500) {
                             int percent = (int) ((totalBytesRead * 100) / compressedSize);
-                            notifyProgress(context, filename, percent, totalBytesRead, compressedSize, fileIndex);
+                            notifyProgress(context, filename, percent, totalBytesRead, compressedSize, fileIndex, currentSpeed);
                             lastNotificationUpdateTime = currentTime;
                         }
                     }
@@ -369,7 +383,7 @@ public class FileReceiver implements Runnable {
 
     // --- UI/Notification Broadcast dispatchers ---
 
-    private static void notifyProgress(Context context, final String filename, final int percent, long transferred, long total, int fileIndex) {
+    private static void notifyProgress(Context context, final String filename, final int percent, long transferred, long total, int fileIndex, double speed) {
         new Handler(Looper.getMainLooper()).post(() -> {
             synchronized (FileReceiver.class) {
                 for (FileReceiveListener l : listeners) {
@@ -378,18 +392,20 @@ public class FileReceiver implements Runnable {
             }
         });
 
-        // Intent broadcast to FileTransferActivity
+        // Intent broadcast to FileTransferActivity with transmission rate metrics
         Intent intent = new Intent(Constants.ACTION_TRANSFER_PROGRESS);
         intent.putExtra(Constants.EXTRA_FILE_NAME, filename);
         intent.putExtra(Constants.EXTRA_BYTES_TRANSFERRED, transferred);
         intent.putExtra(Constants.EXTRA_TOTAL_BYTES, total);
         intent.putExtra(Constants.EXTRA_FILE_INDEX, fileIndex);
+        intent.putExtra(Constants.EXTRA_TRANSFER_SPEED, speed);
         LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
 
         // Foreground Service Notification update
+        String speedText = String.format(Locale.US, "%.1f MB/s", speed);
         Intent serviceIntent = new Intent(context, FileTransferForegroundService.class);
         serviceIntent.setAction("UPDATE_NOTIF");
-        serviceIntent.putExtra("NOTIF_TEXT", "Receiving " + filename + " (" + percent + "%)");
+        serviceIntent.putExtra("NOTIF_TEXT", "Receiving " + filename + " (" + percent + "%) - " + speedText);
         serviceIntent.putExtra("PROGRESS", percent);
         context.startService(serviceIntent);
     }
