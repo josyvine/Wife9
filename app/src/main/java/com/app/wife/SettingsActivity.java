@@ -50,6 +50,38 @@ public class SettingsActivity extends AppCompatActivity {
                 WifeLogger.log(TAG, "Failed wiping Room database: " + e.getMessage(), e);
             }
         });
+
+        // Click listener for manual global conversations backup
+        binding.btnBackupChats.setOnClickListener(v -> {
+            WifeLogger.log(TAG, "User triggered manual global chats backup.");
+            try {
+                boolean success = BackupManager.backupAllChats(SettingsActivity.this);
+                if (success) {
+                    Toast.makeText(SettingsActivity.this, "All conversations backed up to public folder successfully.", Toast.LENGTH_LONG).show();
+                } else {
+                    Toast.makeText(SettingsActivity.this, "Backup skipped: No active database logs found.", Toast.LENGTH_SHORT).show();
+                }
+            } catch (Exception e) {
+                WifeLogger.log(TAG, "Failed manual global chats backup: " + e.getMessage(), e);
+                Toast.makeText(SettingsActivity.this, "Backup failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        // Click listener for manual global conversations restoration
+        binding.btnRestoreChats.setOnClickListener(v -> {
+            WifeLogger.log(TAG, "User triggered manual global chats restoration.");
+            try {
+                boolean success = BackupManager.restoreAllChats(SettingsActivity.this);
+                if (success) {
+                    Toast.makeText(SettingsActivity.this, "Conversations successfully restored and merged.", Toast.LENGTH_LONG).show();
+                } else {
+                    Toast.makeText(SettingsActivity.this, "Restoration skipped: No backup files discovered.", Toast.LENGTH_SHORT).show();
+                }
+            } catch (Exception e) {
+                WifeLogger.log(TAG, "Failed manual global chats restoration: " + e.getMessage(), e);
+                Toast.makeText(SettingsActivity.this, "Restoration failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
     private void setupToolbar() {
