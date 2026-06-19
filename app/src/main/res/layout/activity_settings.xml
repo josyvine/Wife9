@@ -183,6 +183,28 @@
                         android:textStyle="bold"
                         android:textSize="14sp" />
 
+                    <Button
+                        android:id="@+id/btnBackupChats"
+                        android:layout_width="match_parent"
+                        android:layout_height="52dp"
+                        android:layout_marginTop="12dp"
+                        android:backgroundTint="@color/editorial_accent"
+                        android:text="Backup Chats to Public Folder"
+                        android:textColor="#FFFFFF"
+                        android:textStyle="bold"
+                        android:textSize="14sp" />
+
+                    <Button
+                        android:id="@+id/btnRestoreChats"
+                        android:layout_width="match_parent"
+                        android:layout_height="52dp"
+                        android:layout_marginTop="12dp"
+                        android:backgroundTint="@color/editorial_accent"
+                        android:text="Restore Chats from Public Folder"
+                        android:textColor="#FFFFFF"
+                        android:textStyle="bold"
+                        android:textSize="14sp" />
+
                 </LinearLayout>
 
             </com.google.android.material.card.MaterialCardView>
