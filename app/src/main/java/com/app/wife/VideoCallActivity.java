@@ -243,6 +243,13 @@ public class VideoCallActivity extends AppCompatActivity implements
                     stopRingtone();
                     WifeLogger.log(TAG, "Signal matched: ACCEPT. Starting outbound audio/video stream parameters.");
                     binding.tvVideoCallState.setText("Streaming Active");
+
+                    // Symmetrical lookup to resolve Glitch 1: Extract the receiver's customized profile name
+                    if (payload != null && payload.has("senderName")) {
+                        peerName = payload.get("senderName").getAsString();
+                        binding.tvVideoPeerName.setText(peerName);
+                        WifeLogger.log(TAG, "Updated peer display name on caller side to: " + peerName);
+                    }
                     
                     // Parallel audio: Start outbound audio stream
                     WifeLogger.log(TAG, "Concurrently starting outbound audio client connection to: " + peerIp);
