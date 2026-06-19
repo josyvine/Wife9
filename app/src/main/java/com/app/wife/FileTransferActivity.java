@@ -77,6 +77,9 @@ public class FileTransferActivity extends AppCompatActivity implements
                     Toast.makeText(FileTransferActivity.this, "Transfer completed successfully!", Toast.LENGTH_SHORT).show();
                     binding.layoutTransferProgress.setVisibility(View.GONE);
                     loadHistory();
+                    
+                    // Safety cleanup block to resolve Glitch 3
+                    stopService(new Intent(FileTransferActivity.this, FileTransferForegroundService.class));
                     break;
 
                 case Constants.ACTION_TRANSFER_ERROR:
@@ -84,6 +87,9 @@ public class FileTransferActivity extends AppCompatActivity implements
                     Toast.makeText(FileTransferActivity.this, "Transfer failed: " + error, Toast.LENGTH_SHORT).show();
                     binding.layoutTransferProgress.setVisibility(View.GONE);
                     loadHistory();
+                    
+                    // Safety cleanup block to resolve Glitch 3
+                    stopService(new Intent(FileTransferActivity.this, FileTransferForegroundService.class));
                     break;
             }
         }
