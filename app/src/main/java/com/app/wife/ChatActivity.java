@@ -120,6 +120,9 @@ public class ChatActivity extends AppCompatActivity implements ChatManager.Messa
         setupInputBarListeners();
         setupEmojiPanel();
 
+        // Automatically restore previous chat backups for this peer if present in public folder
+        BackupManager.restoreChat(this, peerDeviceId, selfId);
+
         loadHistory();
     }
 
@@ -415,7 +418,6 @@ public class ChatActivity extends AppCompatActivity implements ChatManager.Messa
                 case "png":
                 case "gif":
                 case "bmp":
-                case "webp":
                     subFolder = "images";
                     break;
                 case "mp4":
@@ -573,6 +575,9 @@ public class ChatActivity extends AppCompatActivity implements ChatManager.Messa
             WifeLogger.log("ChatActivity", "onPause() invoked. Unregistering ChatActivity observer from ChatManager listener list.");
             ChatManager.getInstance(this).unregisterMessageListener(this);
             FileReceiver.unregisterListener(this);
+
+            // Automatically backup active session logs to persistent shared public storage
+            BackupManager.backupChat(this, peerDeviceId, selfId);
         }
 
         @Override
