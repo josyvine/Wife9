@@ -81,6 +81,9 @@
         <activity android:name=".CallHistoryActivity" android:exported="false" />
         <activity android:name=".ConnectionStatusActivity" android:exported="false" />
         
+        <!-- Decoupled 5-way Group Video/Audio Call Activity -->
+        <activity android:name=".GroupVideoCallActivity" android:exported="false" />
+        
         <!-- Interactive In-App Media Viewer for Images and Videos -->
         <activity android:name=".MediaViewerActivity" android:exported="false" />
 
@@ -114,6 +117,12 @@
         <service 
             android:name=".FileTransferForegroundService" 
             android:foregroundServiceType="dataSync"
+            android:exported="false" />
+
+        <!-- Decoupled Foreground Service for parallel 5-way UDP group calls -->
+        <service 
+            android:name=".GroupCallForegroundService" 
+            android:foregroundServiceType="camera|microphone"
             android:exported="false" />
 
     </application>
