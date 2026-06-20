@@ -8,6 +8,9 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    
+    <!-- Required to bypass system multicast filtering for 5-way parallel UDP calls -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 
     <!-- Peer discovery location requirements -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
