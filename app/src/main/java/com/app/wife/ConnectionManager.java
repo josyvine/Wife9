@@ -28,6 +28,9 @@ public class ConnectionManager implements WiFiDirectManager.ConnectionChangeList
     // Symmetrical cache variable to hold the active peer's unique hardware ID
     private String peerDeviceId = "";
 
+    // Parallel decoupled multi-peer directory for 5-way group calling
+    private final java.util.Map<String, String> groupPeers = new java.util.concurrent.ConcurrentHashMap<>();
+
     public interface ConnectionStatusListener {
         void onConnectionStateChanged(boolean connected, String peerIp, boolean isHost);
     }
@@ -80,6 +83,27 @@ public class ConnectionManager implements WiFiDirectManager.ConnectionChangeList
     public synchronized void setPeerDeviceId(String peerDeviceId) {
         WifeLogger.log(TAG, "setPeerDeviceId called. Tracking peer ID: " + peerDeviceId);
         this.peerDeviceId = peerDeviceId;
+    }
+
+    // Parallel multi-peer registration mapping for 5-way group calls
+    public synchronized void addGroupPeer(String deviceId, String ipAddress) {
+        if (deviceId != null && !deviceId.isEmpty() && ipAddress != null && !ipAddress.isEmpty()) {
+            groupPeers.put(deviceId, ipAddress);
+            WifeLogger.log(TAG, "addGroupPeer: Tracked " + deviceId + " at IP: " + ipAddress + " | Group Size: " + groupPeers.size());
+        }
+    }
+
+    // Parallel multi-peer removal mapping for 5-way group calls
+    public synchronized void removeGroupPeer(String deviceId) {
+        if (deviceId != null) {
+            groupPeers.remove(deviceId);
+            WifeLogger.log(TAG, "removeGroupPeer: Untracked " + deviceId + " | Group Size: " + groupPeers.size());
+        }
+    }
+
+    // Exposes a thread-safe copy of currently active group peers
+    public synchronized java.util.Map<String, String> getGroupPeers() {
+        return new java.util.HashMap<>(groupPeers);
     }
 
     @Override
@@ -147,6 +171,7 @@ public class ConnectionManager implements WiFiDirectManager.ConnectionChangeList
         isConnected = false;
         peerIpAddress = "";
         peerDeviceId = ""; // Clear active peer device ID on connection loss
+        groupPeers.clear(); // Clean up parallel group call peer mapping directories
         isHost = false;
 
         // Stop any running file transfer activities/servers cleanly
