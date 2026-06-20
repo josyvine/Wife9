@@ -8,6 +8,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Base64;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
@@ -189,7 +190,6 @@ public class GroupVideoCallActivity extends AppCompatActivity implements
 
     private void setupLocalUserCell() {
         localCardView = new CardView(this);
-        localCardView.setRadius(Utils.getDeviceId(this).hashCode()); // Symmetrical fallback keying
         localCardView.setRadius(24f);
 
         localImageView = new ImageView(this);
@@ -232,6 +232,7 @@ public class GroupVideoCallActivity extends AppCompatActivity implements
     }
 
     private void configureCallingState() {
+        WifeLogger.log(TAG, "Registering CallingState listener with CallSignalingManager.");
         CallSignalingManager.getInstance(this).registerListener(this);
 
         if (isInbound) {
@@ -269,7 +270,7 @@ public class GroupVideoCallActivity extends AppCompatActivity implements
     }
 
     private void startCallServiceAndTimer() {
-        WifeLogger.log(TAG, "Starting GroupCallForegroundService background worker.");
+        WifeLogger.log(TAG, "Starting GroupCallForegroundService foreground worker.");
         startService(new Intent(this, GroupCallForegroundService.class));
 
         binding.tvGroupCallState.setText("Streaming Live");
@@ -412,8 +413,12 @@ public class GroupVideoCallActivity extends AppCompatActivity implements
     }
 
     @Override
-    public void onDecoderError(String error) {
-        WifeLogger.log(TAG, "UDP Decoder Error captured: " + error);
+    public void onError(String error) {
+        WifeLogger.log(TAG, "onGroupCallError UI callback received: " + error);
+        runOnUiThread(() -> {
+            Toast.makeText(this, "Group Call Connection Error: " + error, Toast.LENGTH_SHORT).show();
+            hangUp();
+        });
     }
 
     @Override
@@ -438,7 +443,7 @@ public class GroupVideoCallActivity extends AppCompatActivity implements
     @Override
     public void onBackPressed() {
         WifeLogger.log(TAG, "onBackPressed() invoked. Triggering parallel call teardown.");
-        declineOrEndCall();
+        hangUp();
         super.onBackPressed();
     }
 }
