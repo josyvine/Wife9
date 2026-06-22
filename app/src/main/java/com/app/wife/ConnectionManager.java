@@ -124,22 +124,27 @@ public class ConnectionManager implements WiFiDirectManager.ConnectionChangeList
     @Override
     public void onConnectionChanged(WifiP2pInfo info) {
         if (info != null && info.groupFormed) {
-            isConnected = true;
-            isHost = info.isGroupOwner;
-            
-            // Critical Fix: BOTH Host and Client must start background socket servers
-            // to listen for incoming bidirectional message and calling requests.
-            startServers();
-            
-            if (isHost) {
-                Log.d(TAG, "Device is Group Owner. Starting SocketServers...");
-                WifeLogger.log(TAG, "P2P connection established. This device is the Group Owner (Host). Server sockets started.");
-                peerIpAddress = ""; // Will be updated when Client connects to Control Server
+            // Symmetrical State Guard: Only initiate servers and sockets on a fresh link connection
+            if (!isConnected) {
+                isConnected = true;
+                isHost = info.isGroupOwner;
+                
+                // Critical Fix: BOTH Host and Client must start background socket servers
+                // to listen for incoming bidirectional message and calling requests.
+                startServers();
+                
+                if (isHost) {
+                    Log.d(TAG, "Device is Group Owner. Starting SocketServers...");
+                    WifeLogger.log(TAG, "P2P connection established. This device is the Group Owner (Host). Server sockets started.");
+                    peerIpAddress = ""; // Will be updated when Client connects to Control Server
+                } else {
+                    Log.d(TAG, "Device is Client. Connecting to Host: " + info.groupOwnerAddress.getHostAddress());
+                    WifeLogger.log(TAG, "P2P connection established. This device is the Client. Server sockets started. Connecting to Host: " + info.groupOwnerAddress.getHostAddress());
+                    peerIpAddress = info.groupOwnerAddress.getHostAddress();
+                    startClient(info.groupOwnerAddress);
+                }
             } else {
-                Log.d(TAG, "Device is Client. Connecting to Host: " + info.groupOwnerAddress.getHostAddress());
-                WifeLogger.log(TAG, "P2P connection established. This device is the Client. Server sockets started. Connecting to Host: " + info.groupOwnerAddress.getHostAddress());
-                peerIpAddress = info.groupOwnerAddress.getHostAddress();
-                startClient(info.groupOwnerAddress);
+                WifeLogger.log(TAG, "onConnectionChanged: Link already active. Ignoring server recreation to preserve client sockets.");
             }
         } else {
             Log.d(TAG, "Connection lost, tearing down active sockets.");
@@ -208,6 +213,10 @@ public class ConnectionManager implements WiFiDirectManager.ConnectionChangeList
         if (socketClient != null) {
             socketClient.close();
         }
+
+        // Programmatically destroy the virtual P2P group at the OS level to prevent stale connected status freezing
+        WiFiDirectManager.getInstance(context).disconnect(null);
+
         notifyStateChanged();
     }
 
