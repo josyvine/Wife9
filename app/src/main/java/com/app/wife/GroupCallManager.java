@@ -18,6 +18,7 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -149,7 +150,8 @@ public class GroupCallManager {
                     audioSocket.receive(packet);
                     
                     if (!isCallActive) break;
-                    processAudioPacket(packet.getData(), packet.getLength());
+                    String senderIp = packet.getAddress() != null ? packet.getAddress().getHostAddress() : "";
+                    processAudioPacket(packet.getData(), packet.getLength(), senderIp);
                 } catch (Exception e) {
                     if (isCallActive) {
                         WifeLogger.log(TAG, "Audio packet receive loop exception: " + e.getMessage());
@@ -169,7 +171,8 @@ public class GroupCallManager {
                     videoSocket.receive(packet);
                     
                     if (!isCallActive) break;
-                    processVideoPacket(packet.getData(), packet.getLength());
+                    String senderIp = packet.getAddress() != null ? packet.getAddress().getHostAddress() : "";
+                    processVideoPacket(packet.getData(), packet.getLength(), senderIp);
                 } catch (Exception e) {
                     if (isCallActive) {
                         WifeLogger.log(TAG, "Video packet receive loop exception: " + e.getMessage());
@@ -184,7 +187,7 @@ public class GroupCallManager {
      * Extracts and validates the custom 8-byte binary header from an incoming raw UDP payload.
      * Decodes big-endian structures dynamically.
      */
-    private void processAudioPacket(byte[] rawData, int length) {
+    private void processAudioPacket(byte[] rawData, int length, String senderIp) {
         if (length < 8) return; // Header size check
         
         ByteBuffer wrap = ByteBuffer.wrap(rawData, 0, 8);
@@ -193,6 +196,26 @@ public class GroupCallManager {
         
         if (senderId == selfIdHash || type != 1) {
             return; // Ignore loops back from self or mismatched types
+        }
+
+        // Host-side software-defined UDP relay: forward to all other clients
+        ConnectionManager conn = ConnectionManager.getInstance(context);
+        if (conn.isHost() && senderIp != null && !senderIp.isEmpty()) {
+            for (String ip : conn.getGroupPeers().values()) {
+                if (!ip.equals(senderIp)) {
+                    try {
+                        InetAddress dest = InetAddress.getByName(ip);
+                        final DatagramPacket relayPacket = new DatagramPacket(rawData, length, dest, Constants.OFF_PORT_GROUP_AUDIO);
+                        new Thread(() -> {
+                            try {
+                                if (audioSocket != null && !audioSocket.isClosed()) {
+                                    audioSocket.send(relayPacket);
+                                }
+                            } catch (IOException ignored) {}
+                        }).start();
+                    } catch (Exception ignored) {}
+                }
+            }
         }
 
         registerPeerActivity(senderId);
@@ -217,7 +240,7 @@ public class GroupCallManager {
         }
     }
 
-    private void processVideoPacket(byte[] rawData, int length) {
+    private void processVideoPacket(byte[] rawData, int length, String senderIp) {
         if (length < 8) return;
         
         ByteBuffer wrap = ByteBuffer.wrap(rawData, 0, 8);
@@ -226,6 +249,26 @@ public class GroupCallManager {
         
         if (senderId == selfIdHash || type != 2) {
             return; // Ignore self loops or mismatched types
+        }
+
+        // Host-side software-defined UDP relay: forward to all other clients
+        ConnectionManager conn = ConnectionManager.getInstance(context);
+        if (conn.isHost() && senderIp != null && !senderIp.isEmpty()) {
+            for (String ip : conn.getGroupPeers().values()) {
+                if (!ip.equals(senderIp)) {
+                    try {
+                        InetAddress dest = InetAddress.getByName(ip);
+                        final DatagramPacket relayPacket = new DatagramPacket(rawData, length, dest, Constants.OFF_PORT_GROUP_VIDEO);
+                        new Thread(() -> {
+                            try {
+                                if (videoSocket != null && !videoSocket.isClosed()) {
+                                    videoSocket.send(relayPacket);
+                                }
+                            } catch (IOException ignored) {}
+                        }).start();
+                    } catch (Exception ignored) {}
+                }
+            }
         }
 
         registerPeerActivity(senderId);
@@ -354,17 +397,37 @@ public class GroupCallManager {
 
             System.arraycopy(pcmData, 0, rawPayload, 8, length);
 
-            InetAddress broadcastAddr = InetAddress.getByName("192.168.49.255");
-            DatagramPacket packet = new DatagramPacket(rawPayload, rawPayload.length, broadcastAddr, Constants.OFF_PORT_GROUP_AUDIO);
-            
-            // Send asynchronously on calling threads
-            new Thread(() -> {
+            ConnectionManager conn = ConnectionManager.getInstance(context);
+            List<InetAddress> targets = new ArrayList<>();
+            if (conn.isHost()) {
+                // Host unicasts directly to all registered client IPs
+                for (String ip : conn.getGroupPeers().values()) {
+                    try {
+                        targets.add(InetAddress.getByName(ip));
+                    } catch (Exception ignored) {}
+                }
+            } else {
+                // Client unicasts directly to the Host (Group Owner)
                 try {
-                    if (audioSocket != null && !audioSocket.isClosed()) {
-                        audioSocket.send(packet);
-                    }
-                } catch (IOException ignored) {}
-            }).start();
+                    targets.add(InetAddress.getByName("192.168.49.1"));
+                } catch (Exception ignored) {}
+            }
+
+            // Keep subnet broadcast as a fallback measure
+            try {
+                targets.add(InetAddress.getByName("192.168.49.255"));
+            } catch (Exception ignored) {}
+
+            for (InetAddress dest : targets) {
+                final DatagramPacket packet = new DatagramPacket(rawPayload, rawPayload.length, dest, Constants.OFF_PORT_GROUP_AUDIO);
+                new Thread(() -> {
+                    try {
+                        if (audioSocket != null && !audioSocket.isClosed()) {
+                            audioSocket.send(packet);
+                        }
+                    } catch (IOException ignored) {}
+                }).start();
+            }
         } catch (Exception e) {
             WifeLogger.log(TAG, "Failed drafting outbound audio packet: " + e.getMessage());
         }
@@ -393,17 +456,37 @@ public class GroupCallManager {
 
             System.arraycopy(jpegData, 0, rawPayload, 8, length);
 
-            InetAddress broadcastAddr = InetAddress.getByName("192.168.49.255");
-            DatagramPacket packet = new DatagramPacket(rawPayload, rawPayload.length, broadcastAddr, Constants.OFF_PORT_GROUP_VIDEO);
-            
-            // Send asynchronously on calling threads
-            new Thread(() -> {
+            ConnectionManager conn = ConnectionManager.getInstance(context);
+            List<InetAddress> targets = new ArrayList<>();
+            if (conn.isHost()) {
+                // Host unicasts directly to all registered client IPs
+                for (String ip : conn.getGroupPeers().values()) {
+                    try {
+                        targets.add(InetAddress.getByName(ip));
+                    } catch (Exception ignored) {}
+                }
+            } else {
+                // Client unicasts directly to the Host (Group Owner)
                 try {
-                    if (videoSocket != null && !videoSocket.isClosed()) {
-                        videoSocket.send(packet);
-                    }
-                } catch (IOException ignored) {}
-            }).start();
+                    targets.add(InetAddress.getByName("192.168.49.1"));
+                } catch (Exception ignored) {}
+            }
+
+            // Keep subnet broadcast as a fallback measure
+            try {
+                targets.add(InetAddress.getByName("192.168.49.255"));
+            } catch (Exception ignored) {}
+
+            for (InetAddress dest : targets) {
+                final DatagramPacket packet = new DatagramPacket(rawPayload, rawPayload.length, dest, Constants.OFF_PORT_GROUP_VIDEO);
+                new Thread(() -> {
+                    try {
+                        if (videoSocket != null && !videoSocket.isClosed()) {
+                            videoSocket.send(packet);
+                        }
+                    } catch (IOException ignored) {}
+                }).start();
+            }
         } catch (Exception e) {
             WifeLogger.log(TAG, "Failed drafting outbound video packet: " + e.getMessage());
         }
