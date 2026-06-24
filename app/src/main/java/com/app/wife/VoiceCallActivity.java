@@ -287,7 +287,7 @@ public class VoiceCallActivity extends AppCompatActivity implements CallSignalin
 
     private void stopCallServiceAndTimer() {
         WifeLogger.log(TAG, "stopCallServiceAndTimer() invoked. Unregistering SignalingEventListener and terminating foreground service.");
-        CallSignalingManager.getInstance(this).registerListener(this);
+        CallSignalingManager.getInstance(this).unregisterListener(this);
         if (timerRunnable != null) {
             timerHandler.removeCallbacks(timerRunnable);
         }
@@ -353,6 +353,9 @@ public class VoiceCallActivity extends AppCompatActivity implements CallSignalin
         super.onDestroy();
         WifeLogger.log(TAG, "onDestroy() invoked. Stopping active ringtones.");
         stopRingtone();
+        
+        // Force unregistering on exit/destroy to prevent active memory leaks inside the static singleton list (Glitch 6 Fix)
+        CallSignalingManager.getInstance(this).unregisterListener(this);
     }
 
     @Override
