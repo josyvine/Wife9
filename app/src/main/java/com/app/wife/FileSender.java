@@ -12,6 +12,8 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import com.google.gson.JsonObject;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -133,17 +135,19 @@ public class FileSender {
                         // Compress source file locally to a temp cache file before sending
                         WifeLogger.log(TAG, "Compressing local file to temporary cache archive with optimized buffers.");
                         
-                        // Upgraded content URI opener to handle temporary read authorization in background context (0% Stall Fix)
+                        // Symmetrically buffered stream wrapping to speed up I/O transitions on budget hardware
                         try (InputStream is = context.getContentResolver().openInputStream(fileUri);
+                             BufferedInputStream bis = new BufferedInputStream(is, 131072); // 128KB memory buffer
                              FileOutputStream fos = new FileOutputStream(tempCompressedFile);
-                             net.jpountz.lz4.LZ4FrameOutputStream lz4Out = new net.jpountz.lz4.LZ4FrameOutputStream(fos)) {
+                             BufferedOutputStream bos = new BufferedOutputStream(fos, 131072); // 128KB memory buffer
+                             net.jpountz.lz4.LZ4FrameOutputStream lz4Out = new net.jpountz.lz4.LZ4FrameOutputStream(bos, net.jpountz.lz4.LZ4FrameOutputStream.BLOCKSIZE.SIZE_256KB)) {
                             
-                            byte[] buffer = new byte[65536]; // Optimized 64KB stream buffer
+                            byte[] buffer = new byte[65536]; // Optimized 64KB block stream buffer
                             long bytesReadTotal = 0;
                             int read;
                             long lastProgressUpdate = 0;
                             
-                            while ((read = is.read(buffer)) != -1) {
+                            while ((read = bis.read(buffer)) != -1) {
                                 if (FileTransferForegroundService.isCancelled) {
                                     break;
                                 }
