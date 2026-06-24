@@ -94,7 +94,7 @@ public class VideoCallActivity extends AppCompatActivity implements
         if (audioManager != null) {
             int ringerMode = audioManager.getRingerMode();
             if (ringerMode == AudioManager.RINGER_MODE_SILENT) {
-                WifeLogger.log(TAG, "Device profile is SILENT. Suppressing incoming video call ringtone playback (Glitch 6 Fix).");
+                WifeLogger.log(TAG, "Device profile is SILENT. Suppressing incoming video call ringer playback (Glitch 6 Fix).");
                 return;
             } else if (ringerMode == AudioManager.RINGER_MODE_VIBRATE) {
                 WifeLogger.log(TAG, "Device profile is VIBRATE. Suppressing ringtone, starting vibration (Glitch 6 Fix).");
@@ -359,6 +359,9 @@ public class VideoCallActivity extends AppCompatActivity implements
         WifeLogger.log(TAG, "onDestroy() invoked. Cleaning up static LocalFrameListener handles and releasing media players.");
         stopRingtone();
         VideoCaptureManager.setLocalFrameListener(null);
+        
+        // Force unregistering on exit/destroy to prevent active memory leaks inside the static singleton list (Glitch 6 Fix)
+        CallSignalingManager.getInstance(this).unregisterListener(this);
     }
 
     @Override
