@@ -118,17 +118,21 @@ public class VoiceCallActivity extends AppCompatActivity implements CallSignalin
                 WifeLogger.log(TAG, "Device profile is VIBRATE. Suppressing ringtone, starting vibration (Glitch 6 Fix).");
                 if (vibratorService != null && vibratorService.hasVibrator()) {
                     long[] pattern = {0, 600, 800}; // Vibrate 600ms, pause 800ms
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        vibratorService.vibrate(VibrationEffect.createWaveform(pattern, 0)); // Loop from index 0
-                    } else {
-                        vibratorService.vibrate(pattern, 0);
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            vibratorService.vibrate(VibrationEffect.createWaveform(pattern, 0)); // Loop from index 0
+                        } else {
+                            vibratorService.vibrate(pattern, 0);
+                        }
+                    } catch (SecurityException e) {
+                        WifeLogger.log(TAG, "Missing android.permission.VIBRATE in manifest (Glitch 6 Defensive Wrap).", e);
                     }
                 }
                 return;
             }
         }
 
-        WifeLogger.log(TAG, "Initializing incoming call ringtone playback.");
+        WifeLogger.log(TAG, "Initializing incoming call ringer playback.");
         try {
             ringtonePlayer = MediaPlayer.create(this, R.raw.wife_ringtone);
             if (ringtonePlayer != null) {
@@ -136,7 +140,7 @@ public class VoiceCallActivity extends AppCompatActivity implements CallSignalin
                 ringtonePlayer.start();
                 WifeLogger.log(TAG, "Branded ringtone is now playing.");
             } else {
-                WifeLogger.log(TAG, "Failed creating MediaPlayer instance for wife_ringtone.");
+                WifeLogger.log(TAG, "Failed creating MediaPlayer instance for ringer.");
             }
         } catch (Exception e) {
             WifeLogger.log(TAG, "Error playing custom branded ringtone: " + e.getMessage(), e);
@@ -146,7 +150,11 @@ public class VoiceCallActivity extends AppCompatActivity implements CallSignalin
     private void stopRingtone() {
         if (vibratorService != null) {
             WifeLogger.log(TAG, "Halting active vibrator channels.");
-            vibratorService.cancel();
+            try {
+                vibratorService.cancel();
+            } catch (SecurityException e) {
+                WifeLogger.log(TAG, "Failed to cancel vibration programmatically (Glitch 6 Defensive Wrap).", e);
+            }
         }
         if (ringtonePlayer != null) {
             try {
@@ -279,7 +287,7 @@ public class VoiceCallActivity extends AppCompatActivity implements CallSignalin
 
     private void stopCallServiceAndTimer() {
         WifeLogger.log(TAG, "stopCallServiceAndTimer() invoked. Unregistering SignalingEventListener and terminating foreground service.");
-        CallSignalingManager.getInstance(this).unregisterListener(this);
+        CallSignalingManager.getInstance(this).registerListener(this);
         if (timerRunnable != null) {
             timerHandler.removeCallbacks(timerRunnable);
         }
