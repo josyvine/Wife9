@@ -174,7 +174,7 @@ public class MessageReceiver implements Runnable {
                     // Retrieve custom peer display name or fall back to Sender ID
                     String senderDisplayName = json.has("senderName") ? json.get("senderName").getAsString() : "Offline Peer";
                     WifeLogger.log(TAG, "Triggering high-priority system notification alert for message.");
-                    sendSystemNotification(senderDisplayName, text);
+                    sendSystemNotification(senderDisplayName, text, sender); // Fixed: Passed sender device ID (Glitch 4 Fix)
                 }
 
             } catch (Exception e) {
@@ -185,7 +185,8 @@ public class MessageReceiver implements Runnable {
         }
     }
 
-    private void sendSystemNotification(String senderName, String messageText) {
+    // Upgraded signature to carry the sender's device MAC ID (Glitch 4 Fix)
+    private void sendSystemNotification(String senderName, String messageText, String senderId) {
         try {
             String channelId = "WifeChatChannel";
             NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
@@ -204,6 +205,8 @@ public class MessageReceiver implements Runnable {
             }
 
             Intent chatIntent = new Intent(context, ChatActivity.class);
+            // Put actual peer device ID to resolve blank page layout glitch (Glitch 4 Fix)
+            chatIntent.putExtra(Constants.EXTRA_PEER_MAC, senderId);
             chatIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             
             PendingIntent pendingIntent = PendingIntent.getActivity(
