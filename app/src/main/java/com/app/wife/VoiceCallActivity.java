@@ -1,13 +1,17 @@
 package com.wife.app;
 
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Vibrator;
+import android.os.VibrationEffect;
 import android.util.Base64;
 import android.view.View;
 import android.view.WindowManager;
@@ -35,6 +39,7 @@ public class VoiceCallActivity extends AppCompatActivity implements CallSignalin
     private Runnable timerRunnable;
 
     private MediaPlayer ringtonePlayer;
+    private Vibrator vibratorService;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -56,6 +61,7 @@ public class VoiceCallActivity extends AppCompatActivity implements CallSignalin
         WifeLogger.log(TAG, "onCreate() invoked. Initializing VoiceCallActivity components.");
 
         voiceCallManager = VoiceCallManager.getInstance(this);
+        vibratorService = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
 
         // Fetch intent boundaries
         peerIp = getIntent().getStringExtra(Constants.EXTRA_PEER_IP);
@@ -101,6 +107,27 @@ public class VoiceCallActivity extends AppCompatActivity implements CallSignalin
     }
 
     private void startRingtone() {
+        WifeLogger.log(TAG, "Checking device system audio configuration profile.");
+        AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        if (audioManager != null) {
+            int ringerMode = audioManager.getRingerMode();
+            if (ringerMode == AudioManager.RINGER_MODE_SILENT) {
+                WifeLogger.log(TAG, "Device profile is SILENT. Suppressing incoming ringtone playback (Glitch 6 Fix).");
+                return;
+            } else if (ringerMode == AudioManager.RINGER_MODE_VIBRATE) {
+                WifeLogger.log(TAG, "Device profile is VIBRATE. Suppressing ringtone, starting vibration (Glitch 6 Fix).");
+                if (vibratorService != null && vibratorService.hasVibrator()) {
+                    long[] pattern = {0, 600, 800}; // Vibrate 600ms, pause 800ms
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        vibratorService.vibrate(VibrationEffect.createWaveform(pattern, 0)); // Loop from index 0
+                    } else {
+                        vibratorService.vibrate(pattern, 0);
+                    }
+                }
+                return;
+            }
+        }
+
         WifeLogger.log(TAG, "Initializing incoming call ringtone playback.");
         try {
             ringtonePlayer = MediaPlayer.create(this, R.raw.wife_ringtone);
@@ -117,6 +144,10 @@ public class VoiceCallActivity extends AppCompatActivity implements CallSignalin
     }
 
     private void stopRingtone() {
+        if (vibratorService != null) {
+            WifeLogger.log(TAG, "Halting active vibrator channels.");
+            vibratorService.cancel();
+        }
         if (ringtonePlayer != null) {
             try {
                 WifeLogger.log(TAG, "Stopping and releasing local ringtone MediaPlayer.");
