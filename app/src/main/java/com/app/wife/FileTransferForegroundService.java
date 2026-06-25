@@ -222,7 +222,7 @@ public class FileTransferForegroundService extends Service {
             File[] files = cacheDir.listFiles();
             if (files != null) {
                 for (File f : files) {
-                    if (f.getName().startsWith("temp_send_") || f.getName().startsWith("temp_recv_")) {
+                    if (f.getName().startsWith("temp_send_") || f.getName().startsWith("temp_recv_") || f.getName().startsWith("chunk_") || f.getName().startsWith("temp_chunk_")) {
                         boolean deleted = f.delete();
                         WifeLogger.log(TAG, "Purged temporary cache file during destroy: " + f.getName() + " -> " + deleted);
                     }
